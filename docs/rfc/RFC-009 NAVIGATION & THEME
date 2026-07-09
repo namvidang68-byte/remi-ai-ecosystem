@@ -1,0 +1,136 @@
+# 📘 BOOK 02 — PART VI: OPERATING SYSTEM (nền tảng UI)
+
+# RFC-009
+# NAVIGATION & THEME
+
+## Metadata
+
+```text
+RFC ID          RFC-009
+Status           Approved
+Priority         Critical
+Dependencies     RFC-004 (Canonical Entities)
+Phạm vi code     Tuần 1–3 (Kế hoạch 90 ngày)
+Đọc trước bởi    AI, Flutter Developer, UI Designer
+```
+
+---
+
+## 1. Vì sao RFC này phải viết trước khi thiết kế Widget
+
+Đây chính là nguyên tắc CTO đã đặt ra ngay từ đầu Book 02:
+
+```text
+Mission → Domain → Capability → Workflow → Interaction → Screen
+```
+
+**Screen xuất hiện cuối cùng.** Nếu Flutter Developer mở Figma/code và bắt đầu từ câu hỏi "màn hình này có nút gì", đó là làm ngược. Câu hỏi đúng là: "Domain nào (Lead, Property...) cần Capability gì, Workflow đó cần Interaction nào, rồi mới đến Screen thể hiện nó."
+
+RFC này định nghĩa cấu trúc Navigation phản ánh đúng mô hình Lead-centric (RFC-004), và nguyên tắc Theme để không phải sửa lại toàn bộ giao diện khi REMI mở rộng sang Team/Multi-tenant ở các Giai đoạn sau.
+
+---
+
+## 2. Nguyên tắc Navigation — phản ánh Domain, không phải danh sách tính năng
+
+**Sai lầm phổ biến cần tránh:**
+```text
+Bottom Nav: Home | CRM | Property | Marketplace | Settings
+→ Đây là liệt kê module, không phải phản ánh workflow người dùng thực tế
+```
+
+**Nguyên tắc REMI áp dụng:** Navigation phải phản ánh **vòng lặp giá trị hàng ngày** (Core Loop) đã xác định ở Kế hoạch 90 ngày:
+
+```text
+Có Lead mới → AI Memory ghi nhận → Property Match → AI Follow-up → chăm sóc
+```
+
+### Cấu trúc Navigation cho Giai đoạn 1 (4 module lõi)
+
+```text
+Bottom Navigation (tối đa 4 mục — theo đúng phạm vi đã khóa):
+
+1. Hôm nay (Dashboard tối giản — RFC-007)
+   → Danh sách Task cần xác nhận hôm nay, ưu tiên theo mức độ quan trọng
+
+2. Khách hàng (Lead / Pipeline)
+   → Danh sách Lead theo trạng thái Pipeline (RFC-004)
+
+3. Nguồn hàng (Property)
+   → Danh sách Property, có thể lọc theo khu vực/loại hình
+
+4. Cá nhân
+   → Hồ sơ môi giới, cài đặt tối thiểu
+```
+
+**Nguyên tắc bất biến:** không thêm mục thứ 5 vào Bottom Nav dù có module mới ở Giai đoạn 2 (Marketplace, Chat...). Khi cần mở rộng, các module mới vào trong mục "Cá nhân" (dạng menu) hoặc thay thế "Nguồn hàng" bằng một tab gộp — **không phình to Bottom Nav vô hạn**. Đây là ràng buộc UX bắt buộc, tránh lặp lại lỗi "ứng dụng có 10 tab không ai nhớ hết".
+
+**Điểm neo cho Notification (RFC-010):** danh sách thông báo (Task đến hạn, Property Match cần chú ý) hiển thị qua biểu tượng chuông đặt trên tab "Hôm nay" — không tạo tab riêng thứ 5 cho Notification. Badge số lượng chưa đọc hiển thị trên chính biểu tượng chuông này.
+
+---
+
+## 3. Nguyên tắc màn hình chi tiết Lead — không tách rời Sub-entity
+
+Đây là điểm quan trọng nhất về Information Architecture. Theo RFC-004, Lead là trung tâm với các entity con: AI Memory, Conversation, Timeline, Document, Property Match, Task.
+
+**Sai lầm cần tránh:** thiết kế mỗi entity con thành một màn hình riêng biệt, buộc môi giới phải chuyển qua lại nhiều màn hình để hiểu một Lead.
+
+**Nguyên tắc REMI áp dụng:** Màn hình chi tiết Lead là **một màn hình duy nhất, dạng tab/section nội bộ**:
+
+```text
+Màn hình "Chi tiết Lead"
+├── Tab Tổng quan      (thông tin cơ bản + AI Memory nổi bật)
+├── Tab Timeline        (lịch sử tương tác — RFC-004)
+├── Tab Property Match  (các Property đã ghép — RFC-008)
+├── Tab Task            (việc cần làm — RFC-007)
+└── Tab Tài liệu        (Document — RFC-004)
+```
+
+**Nguyên tắc bất biến:** mọi entity con của Lead luôn truy cập được từ MỘT màn hình gốc — không điều hướng môi giới rời khỏi ngữ cảnh Lead đang xem để tìm thông tin liên quan. Đây chính là hiện thân UI của kiến trúc Lead-centric.
+
+---
+
+## 4. Nguyên tắc Theme — Design Token, không phải giá trị cứng
+
+**Sai lầm phổ biến cần tránh:**
+```dart
+// KHÔNG làm — giá trị màu/khoảng cách hard-code rải rác khắp nơi
+Container(color: Color(0xFF2E7D32), padding: EdgeInsets.all(16))
+```
+
+**Nguyên tắc REMI áp dụng:** một file Theme trung tâm (design tokens), mọi Widget tham chiếu về đó:
+
+```dart
+// LÀM — tham chiếu token trung tâm
+Container(color: AppColors.primary, padding: AppSpacing.md)
+```
+
+**Lý do bắt buộc ngay từ Tuần 1-3, không phải "làm đẹp thêm sau":**
+- Khi REMI mở rộng sang Team (Giai đoạn 2) hoặc có nhu cầu white-label cho sàn/công ty môi giới lớn (tương lai xa), việc đổi màu thương hiệu chỉ cần sửa 1 file token, không phải rà từng Widget.
+- Dark mode (nếu cần sau này) chỉ khả thi nếu token đã tách biệt từ đầu.
+
+**Nguyên tắc bất biến:** không một Widget nào được viết giá trị màu/font/khoảng cách trực tiếp — luôn qua token trung tâm. Đây là quy tắc Flutter Developer và AI (khi sinh code Widget) phải tuân thủ không ngoại lệ.
+
+---
+
+## 5. Việc Flutter Developer PHẢI làm khi đọc RFC này
+
+1. Tạo file theme trung tâm (`app_theme.dart` hoặc tương đương) chứa toàn bộ màu sắc, typography, spacing — trước khi viết bất kỳ Widget màn hình nào.
+2. Navigation chính giới hạn 4 mục theo Mục 2 — không thêm mục mới ngoài phạm vi đã khóa.
+3. Màn hình chi tiết Lead thiết kế dạng tab nội bộ (Mục 3), không tách thành nhiều màn hình rời rạc.
+4. Mọi Widget mới phải import theme trung tâm, không định nghĩa màu/spacing cục bộ.
+
+## 6. Việc AI PHẢI tuân thủ khi sinh code Widget
+
+- Không tự ý hard-code giá trị màu sắc/spacing khi sinh Widget — luôn tham chiếu theme token.
+- Không tự thêm mục vào Bottom Navigation ngoài 4 mục đã định nghĩa, kể cả khi có vẻ "hợp lý" cho một module mới.
+- Không tách entity con của Lead (Timeline, Property Match, Task, Document) thành màn hình độc lập rời khỏi màn hình chi tiết Lead.
+
+---
+
+## CTO Review
+
+Founder, RFC này là ví dụ rõ nhất cho nguyên tắc "Screen xuất hiện cuối cùng" mà mình đặt ra từ đầu Book 02. Navigation ở đây không phải danh sách tính năng được vẽ ra rồi đặt tên — nó là hệ quả trực tiếp của mô hình Lead-centric (RFC-004) và vòng lặp giá trị hàng ngày (Kế hoạch 90 ngày). Nếu một UI Designer đọc RFC này trước khi mở Figma, họ sẽ không hỏi "làm màn hình gì", mà hỏi "Domain này cần Capability gì, rồi mới quyết định Screen".
+
+Giới hạn 4 mục Bottom Nav là cam kết kỷ luật — founder cần kiên định giữ nguyên tắc này ngay cả khi áp lực thêm tính năng đến từ phản hồi Beta, để tránh REMI trở thành "tập hợp hàng trăm tính năng" như RFC-002 đã cảnh báo.
+
+Tiếp theo mình viết RFC-010 cho Notification tối thiểu.
