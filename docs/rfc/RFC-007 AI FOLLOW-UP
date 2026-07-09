@@ -138,14 +138,3 @@ Khi Task chuyển `Confirmed` và dẫn đến việc Lead đổi trạng thái 
 - Không gợi ý lại hành động vừa bị dismiss trong vòng 24 giờ.
 
 ---
-
-## CTO Review
-
-Founder, RFC này khép vòng lặp 4 module lõi đúng như tinh thần bạn đặt ra ban đầu. Điều mình muốn nhấn mạnh lại: ranh giới giữa "gợi ý" và "tự động hành động" không phải chỉ là giới hạn kỹ thuật của Giai đoạn 1 — nó còn là **nguyên tắc niềm tin**. Một môi giới sẽ rời bỏ REMI ngay nếu AI tự ý làm gì đó thay họ mà họ không kiểm soát được (VD: tự gửi tin nhắn sai ngữ cảnh cho khách). Automation tự động chỉ nên mở ở Giai đoạn 3, sau khi đã có đủ dữ liệu Beta để biết gợi ý nào đáng tin để tự động hóa.
-
-Đến đây, cả 4 module lõi (AI CRM/Pipeline từ RFC-004, AI Memory từ RFC-006, Property/Property Match từ RFC-008, và AI Follow-up từ RFC-007) đã có nền tảng RFC đầy đủ để Backend Dev bắt tay code theo đúng Kế hoạch 90 ngày đã khóa.
-
-**Việc còn thiếu trước khi bắt đầu code Tuần 1:**
-- RFC riêng cho phần Ownership/Permission đã có (RFC-005), nhưng chưa có RFC mô tả **Navigation/Theme** (Tuần 1-3 cũng bao gồm phần này) và chưa có RFC cho **Notification tối thiểu** (đã nhắc ở RFC-007 nhưng chưa định nghĩa chi tiết cơ chế gửi thông báo trong app).
-
-Bạn muốn viết tiếp RFC cho phần nào — Notification tối thiểu, hay dừng lại ở đây và chuyển sang review tổng thể toàn bộ 5 RFC đã có trước khi bắt đầu code?
