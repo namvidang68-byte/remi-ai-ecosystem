@@ -1,0 +1,296 @@
+# 📘 SỔ TAY VẬN HÀNH CHÍNH THỨC — REMI (v1)
+
+**Vai trò tổng hợp:** Flutter Architect, Flutter Developer, Backend Architect, Backend Developer, Database Designer, UI/UX Designer, AI Architect, Product Designer, QA Tester, Technical Writer, DevOps Advisor
+
+**Trạng thái:** Chính thức — dùng để bắt đầu code Tuần 1
+**Phụ thuộc:** RFC-004 → RFC-010, `supabase_schema_v1.sql`
+
+---
+
+# PHẦN A — KIẾN TRÚC KỸ THUẬT CHÍNH THỨC
+
+## A.1 Quyết định kiến trúc (Flutter Architect + Backend Architect)
+
+```text
+Flutter App
+    │
+    │ (gọi trực tiếp qua supabase_flutter SDK)
+    ▼
+Supabase (Postgres + RLS + Auth + Storage + Edge Functions)
+    │
+    │ (Edge Function gọi ra ngoài khi cần AI)
+    ▼
+Claude API (trích xuất AI Memory — RFC-006)
+```
+
+**Quyết định:** KHÔNG xây dựng backend API trung gian riêng ở Giai đoạn 1. Flutter gọi thẳng Supabase, dùng RLS (đã viết ở schema) làm lớp bảo mật duy nhất. Lý do: founder solo, thêm một tầng API là chi phí không cần thiết khi RLS đã đủ mạnh. Sẽ cân nhắc thêm backend riêng khi có logic nghiệp vụ phức tạp hơn RLS xử lý được (Giai đoạn 2+).
+
+**Nơi cần code chạy nền (Backend Architect):** dùng **Supabase Edge Functions** (Deno/TypeScript) cho:
+- Pipeline trích xuất AI Memory (RFC-006) — trigger khi có Conversation mới
+- Gộp Notification (RFC-010) — chạy định kỳ hoặc trigger theo sự kiện
+- Sinh gợi ý AI Follow-up (RFC-007) — chạy định kỳ (VD: mỗi giờ quét Lead cần follow-up)
+
+## A.2 Chọn công nghệ Flutter (Flutter Developer)
+
+```text
+State Management     Riverpod (không dùng BLoC — quá cồng kềnh cho 1 dev;
+                      không dùng Provider thuần — Riverpod là bản kế thừa tốt hơn)
+Routing               go_router
+Networking            supabase_flutter (SDK chính thức)
+Local state cache     Riverpod providers, không dùng thêm Hive/SQLite ở Giai đoạn 1
+                      (chưa cần Offline Mode — đó là Article 37, Giai đoạn sau)
+```
+
+**Quy trình code kết hợp Cursor + Claude Code — ĐÃ CHỐT:**
+
+```text
+Cursor        → công việc trong IDE hàng ngày: viết/sửa Widget, xem lại code
+                 gợi ý inline, debug nhanh, làm việc trực tiếp trên từng file
+Claude Code   → tác vụ agentic phạm vi lớn: dựng khung dự án ban đầu từ RFC,
+                 refactor nhiều file cùng lúc, chạy migration Supabase CLI,
+                 viết Edge Function, chạy test hàng loạt qua terminal
+```
+
+**Nguyên tắc phân công:** việc nào cần **thao tác trên nhiều file/chạy lệnh terminal/migration** → Claude Code. Việc nào là **sửa nhanh một Widget cụ thể, pair-programming trực tiếp** → Cursor. Cả hai đều nên được trỏ vào cùng một RFC làm nguồn sự thật duy nhất (đưa file RFC vào context của cả hai công cụ) để tránh code sinh ra ở hai nơi lệch nguyên tắc nhau.
+
+**Cấu trúc thư mục đề xuất (phản ánh domain, không phải feature UI rời rạc — đúng tinh thần RFC-009):**
+```text
+lib/
+├── core/
+│   ├── theme/            (RFC-009 — design tokens)
+│   ├── router/
+│   └── supabase_client.dart
+├── domain/
+│   ├── lead/             (model + repository)
+│   ├── property/
+│   ├── ai_memory/
+│   ├── property_match/
+│   └── task/
+├── features/
+│   ├── today/            (Dashboard — RFC-007)
+│   ├── lead_list/
+│   ├── lead_detail/      (tabs: Tổng quan/Timeline/Match/Task/Tài liệu — RFC-009 Mục 3)
+│   ├── property_list/
+│   └── profile/
+└── main.dart
+```
+
+## A.3 Chọn nhà cung cấp AI (AI Architect)
+
+**Trích xuất AI Memory (RFC-006):** dùng **Claude Haiku 4.5** — đủ tốt cho tác vụ trích xuất/suy luận ngắn từ Conversation, chi phí thấp hơn nhiều so với model lớn, phù hợp ngân sách bootstrap. Không dùng model cao cấp cho tác vụ này vì khối lượng gọi API sẽ tăng theo số Conversation, cần tối ưu chi phí/lượt gọi.
+
+**Embedding cho pgvector — ĐÃ CHỐT:** **Voyage AI `voyage-4-lite`** (1024 chiều, mặc định).
+
+> **Ghi chú quan trọng:** khi chốt quyết định này, tôi tra cứu lại thông tin mới nhất về Voyage AI (ngoài phạm vi kiến thức huấn luyện) và phát hiện: tính đến 1/2026, Voyage AI đã ra thế hệ **Voyage 4** (`voyage-4-large/4/4-lite/4-nano`), và `voyage-3`/`voyage-3-large` (đề xuất ban đầu) đã chuyển thành **legacy**. Quyết định cuối: dùng `voyage-4-lite` thay vì `voyage-3` vì:
+> - Cùng dòng Voyage 4 — chia sẻ chung không gian embedding, sau này nâng cấp lên `voyage-4`/`voyage-4-large` không cần re-embed toàn bộ dữ liệu cũ.
+> - Chi phí thấp, phù hợp ngân sách bootstrap.
+> - Không chọn bản tối ưu Finance — dữ liệu REMI là hội thoại đời thường tiếng Việt về bất động sản, không phải văn bản tài chính chuyên ngành, nên bản Finance-optimized không có lợi thế thực tế; đa ngôn ngữ tổng quát của Voyage 4 phù hợp hơn.
+> - Schema đã cập nhật: `vector(1024)` thay vì giả định 1536 ban đầu.
+
+**Sinh gợi ý AI Follow-up (RFC-007)** cũng dùng Claude Haiku — logic sinh gợi ý dựa trên rule + Memory, không cần model phức tạp ở Giai đoạn 1.
+
+---
+
+# PHẦN B — THIẾT LẬP MÔI TRƯỜNG (DevOps Advisor)
+
+## B.1 Tách môi trường
+
+```text
+Development   — Supabase project riêng, dữ liệu test/giả
+Production    — Supabase project riêng, dữ liệu Beta thật (30-50 môi giới)
+```
+
+**Nguyên tắc bất biến:** không dùng chung 1 Supabase project cho cả dev và production, dù chỉ là founder solo — rủi ro làm hỏng dữ liệu Beta thật khi đang thử nghiệm tính năng mới là quá cao.
+
+## B.2 Quản lý Secrets
+
+```text
+- Không commit API key (Supabase, Claude API) vào Git
+- Dùng file .env (Flutter: flutter_dotenv hoặc --dart-define) — thêm .env vào .gitignore
+- Edge Functions: dùng Supabase Secrets (supabase secrets set) — không hard-code trong code Function
+```
+
+## B.3 Version control cho Database
+
+**Nguyên tắc bất biến:** không sửa schema trực tiếp qua Supabase Dashboard SQL Editor cho thay đổi vĩnh viễn. Dùng **Supabase CLI migrations** (`supabase migration new`, `supabase db push`) để mọi thay đổi schema được lưu vào Git, có lịch sử, review được trước khi áp dụng.
+
+## B.4 Backup
+
+```text
+- Bật Point-in-Time Recovery (PITR) trên Supabase project production
+  ngay khi có dữ liệu Beta thật — không đợi "khi nào lớn hơn"
+- Kiểm tra định kỳ hàng tuần: backup có chạy được không (không chỉ tin backup tự động)
+```
+
+## B.5 Giám sát tối thiểu
+
+```text
+- Supabase Dashboard: theo dõi số lượng request, lỗi RLS (access denied logs)
+- Edge Function logs: kiểm tra hàng ngày trong 2 tuần đầu Beta để phát hiện lỗi
+  pipeline trích xuất AI Memory sớm
+```
+
+---
+
+# PHẦN C — QA: BỘ TIÊU CHÍ CHẤP NHẬN (QA Tester)
+
+Test case tối thiểu cho mỗi module trước khi mở Beta, gắn trực tiếp với RFC nguồn:
+
+## C.1 AI CRM / Pipeline
+```text
+✓ Tạo Lead mới → tự động có 1 dòng lead_ownerships với role Owner (RFC-005)
+✓ Broker A không thấy được Lead của Broker B (test RLS — quan trọng nhất)
+✓ Đổi pipeline_status → tự động ghi vào timeline_events (RFC-004)
+✓ Xóa Lead (hard delete) → phải KHÔNG thực hiện được (RLS chặn, RFC-004)
+```
+
+## C.2 AI Memory
+```text
+✓ Conversation mới → Edge Function trích xuất → tạo ai_memories với confidence + source_conversation_id
+✓ Sửa nội dung Memory đã Confirmed → phải bị chặn (trigger DB, RFC-006)
+✓ Memory mâu thuẫn với Memory cũ → trạng thái Conflicting, KHÔNG tự ghi đè (RFC-006)
+```
+
+## C.3 Property Match
+```text
+✓ Property mới khớp tiêu chí (khu vực + loại hình + ngân sách ±20%) với Lead → tự tạo Match (created_by=system)
+✓ Môi giới tự chọn Property gắn Lead thủ công → created_by=manual
+✓ Match dùng Memory mức Low → phải KHÔNG được dùng làm tiêu chí (RFC-006 Usability Rule)
+```
+
+## C.4 AI Follow-up
+```text
+✓ Task sinh ra không vượt quá max_suggestions_per_lead_per_day (RFC-007)
+✓ Task bị dismiss → không gợi ý lại hành động giống hệt trong 24h
+✓ Task Confirmed → confirmed_at ghi nhận, sau đó sửa lại confirmed_at → phải bị chặn (trigger DB)
+✓ Sự kiện Confirmed → phải bắn được vào báo cáo North Star Metric (kiểm tra query đếm được)
+```
+
+## C.5 Notification
+```text
+✓ Nhiều Task/Match cùng lúc trong 1 giờ → gộp thành 1 notification, không gửi riêng lẻ (RFC-010)
+✓ Task nguồn đổi trạng thái → notification tự đồng bộ sang Actioned, không cần thao tác tay 2 lần
+```
+
+**Nguyên tắc QA bất biến:** test RLS (mục C.1 dòng 2) là test quan trọng nhất trong toàn bộ danh sách — phải chạy thủ công với 2 tài khoản broker thật trước khi mời bất kỳ môi giới Beta nào vào hệ thống.
+
+---
+
+# PHẦN D — LUỒNG ONBOARDING MÔI GIỚI BETA (Product Designer)
+
+Chưa có ở các RFC trước — đây là khoảng trống cần lấp trước Tuần 12.
+
+```text
+Bước 1: Môi giới nhận link cài app (hoặc TestFlight/APK trực tiếp — Giai đoạn Beta
+         chưa cần lên App Store/Play Store chính thức)
+Bước 2: Đăng ký tài khoản (số điện thoại/email) → tạo dòng brokers
+Bước 3: Màn hình chào mừng tối giản — 3 màn hình giới thiệu:
+         "Ghi Lead" → "AI nhớ giúp bạn" → "AI nhắc việc mỗi ngày"
+         (không làm onboarding phức tạp nhiều bước — đúng tinh thần tối giản
+         xuyên suốt Giai đoạn 1)
+Bước 4: Màn hình rỗng đầu tiên (Empty State) ở tab "Khách hàng" phải có nút
+         "+ Thêm khách hàng đầu tiên" rõ ràng — đây là hành động đầu tiên
+         quyết định môi giới có tiếp tục dùng hay bỏ app.
+```
+
+**Nguyên tắc bất biến:** không yêu cầu môi giới nhập liệu quá nhiều thông tin ở bước đăng ký — chỉ cần tên, số điện thoại, khu vực, phân khúc. Mọi thông tin khác thu thập dần qua quá trình sử dụng.
+
+---
+
+# PHẦN E — TÀI LIỆU HƯỚNG DẪN SỬ DỤNG CHO MÔI GIỚI (Technical Writer)
+
+**Việc cần làm trước Tuần 12 (chưa viết ở đây, cần file riêng):** một hướng dẫn ngắn 1 trang (hoặc video 2-3 phút) bằng tiếng Việt, giọng văn đơn giản, không thuật ngữ kỹ thuật, gồm:
+```text
+1. Cách thêm khách hàng mới
+2. Cách xem AI đã ghi nhớ gì về khách
+3. Cách xác nhận đã làm xong một việc AI nhắc
+4. Cách gửi property cho khách
+```
+Đề xuất: viết tài liệu này sau khi có bản build thật đầu tiên (Tuần 11), dùng ảnh chụp màn hình thật thay vì mô tả suông — dễ hiểu hơn nhiều cho đối tượng môi giới không rành công nghệ.
+
+---
+
+# PHẦN F — QUY TRÌNH VẬN HÀNH HÀNG NGÀY/HÀNG TUẦN CHO FOUNDER
+
+## F.1 Nơi lưu trữ gì (nhắc lại quyết định đã chốt)
+
+```text
+Notion      → RFC, roadmap, task nội bộ, ghi chú quyết định (KHÔNG lưu dữ liệu khách hàng thật)
+Supabase    → Toàn bộ dữ liệu sản phẩm (Lead, Property, Memory, Task...)
+Git repo    → Code Flutter + Edge Functions + migrations SQL
+Claude      → Tư vấn kiến trúc, review RFC, sinh code cùng Claude Code
+```
+
+## F.2 Quy trình mỗi khi có thay đổi Database
+
+```text
+1. Viết migration mới bằng Supabase CLI (không sửa trực tiếp Dashboard)
+2. Review lại xem có vi phạm nguyên tắc nào trong 7 RFC không
+3. Chạy migration trên môi trường Development trước
+4. Test RLS liên quan (nếu có thay đổi ownership/quyền)
+5. Mới áp dụng lên Production
+```
+
+## F.3 Nhịp độ theo dõi Beta (từ Tuần 12)
+
+```text
+Hàng ngày   — kiểm tra Edge Function logs (lỗi trích xuất AI Memory)
+Hàng tuần   — xem số liệu North Star Metric (Metric A) + Metric B song song,
+              thu thập phản hồi định tính từ 3-5 môi giới ngẫu nhiên
+```
+
+---
+
+# PHẦN G — THÔNG SỐ DỰ ÁN CHÍNH THỨC (ĐÃ CHỐT)
+
+```text
+Supabase project      remi-ai-ecosystem
+Bundle ID (iOS)        com.remiai.app
+Application ID (Android)  com.remiai.app
+Domain Beta            remi-ai.io
+Embedding model        Voyage AI voyage-4-lite (1024 chiều)
+AI extraction/gợi ý    Claude Haiku 4.5
+Công cụ code           Cursor (sửa nhanh trong IDE) + Claude Code (tác vụ agentic)
+```
+
+## G.1 Lệnh khởi tạo dự án (Backend Developer)
+
+```bash
+# Supabase — tạo 2 project riêng biệt (Phần B.1)
+supabase projects create remi-ai-ecosystem-dev
+supabase projects create remi-ai-ecosystem-prod
+
+# Khởi tạo local + link project dev trước
+supabase init
+supabase link --project-ref <ref-của-remi-ai-ecosystem-dev>
+
+# Migration đầu tiên — đưa schema đã chốt vào version control
+supabase migration new init_core_schema
+# → dán nội dung supabase_schema_v1.sql vào file migration vừa tạo
+supabase db push
+```
+
+## G.2 Lệnh khởi tạo Flutter (Flutter Developer)
+
+```bash
+flutter create remi_app \
+  --org com.remiai \
+  --platforms ios,android
+
+# Bundle ID / Application ID sẽ tự động là com.remiai.app theo --org com.remiai + tên app
+# Kiểm tra lại thủ công trong:
+#   ios/Runner.xcodeproj (PRODUCT_BUNDLE_IDENTIFIER)
+#   android/app/build.gradle (applicationId)
+# để đảm bảo đúng chính xác com.remiai.app
+
+flutter pub add supabase_flutter flutter_riverpod go_router flutter_dotenv
+```
+
+## G.3 Domain & TestFlight
+
+```text
+remi-ai.io           → domain chính, dùng cho landing page Beta (nếu có) và
+                        redirect email xác thực của Supabase Auth
+beta.remi-ai.io       → (đề xuất) subdomain riêng cho trang hướng dẫn/tài liệu
+                        Beta (Phần E) nếu cần, tách khỏi domain chính
+```
