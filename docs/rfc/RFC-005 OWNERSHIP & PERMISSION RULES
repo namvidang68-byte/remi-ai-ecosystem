@@ -1,0 +1,286 @@
+
+# 📘 BOOK 02 — PART V: BUSINESS RULES
+
+# RFC-005
+# OWNERSHIP & PERMISSION RULES
+
+## Metadata
+
+```text
+RFC ID          RFC-005
+Status           Approved
+Priority         Critical
+Dependencies     RFC-004 (Canonical Entities)
+Đọc trước bởi    AI, Backend Developer, Flutter Developer
+```
+
+---
+
+## 1. Vì sao RFC này phải viết trước khi có Co-op
+
+RFC-004 đã cảnh báo: bảng dữ liệu **không được thiết kế cứng theo kiểu 1-1** dù Giai đoạn 1 chỉ cần 1 môi giới sở hữu 1 Lead.
+
+Sai lầm phổ biến khi Backend Dev tự đoán:
+
+```text
+leads.broker_id  (một cột, một giá trị)
+```
+
+Khi Co-op ra mắt (nhiều môi giới cùng tham gia một Lead theo vai trò khác nhau — người tạo Lead, người dẫn khách, người chốt giao dịch), cột đơn này buộc phải migrate — rủi ro mất dữ liệu, downtime, và sai lệch lịch sử ai từng làm gì.
+
+RFC này định nghĩa mô hình Ownership & Permission **đủ tổng quát để dùng được cho cả Giai đoạn 1 và Giai đoạn 2**, dù Giai đoạn 1 chỉ cần dùng một phần nhỏ của nó.
+
+---
+
+## 2. Nguyên tắc nền tảng
+
+> **Ownership là quan hệ (relationship), không phải thuộc tính (attribute).**
+
+Nghĩa là: không lưu "ai sở hữu" như một cột trong bảng `leads`. Lưu nó như một **bảng quan hệ riêng**, dù ở Giai đoạn 1 mỗi Lead chỉ có đúng một dòng trong bảng đó.
+
+```text
+KHÔNG làm:
+leads (id, name, broker_id, ...)
+
+LÀM:
+leads (id, name, ...)
+lead_ownerships (id, lead_id, broker_id, role, granted_at, ...)
+```
+
+Đây là nguyên tắc bất biến duy nhất bắt buộc áp dụng ngay từ Tuần 1-3, dù Co-op chưa build.
+
+---
+
+## 3. Vai trò (Role) trong quan hệ sở hữu
+
+Ngay cả khi Giai đoạn 1 chỉ dùng 1 role, hệ thống role phải được định nghĩa như enum mở rộng được từ đầu:
+
+```text
+Owner           — người sở hữu chính, toàn quyền (Giai đoạn 1: luôn là người tạo Lead)
+Collaborator    — người cùng tham gia, quyền giới hạn (Giai đoạn 2: Co-op)
+Viewer          — chỉ xem, không sửa (dự trù cho Team/Quản lý — Giai đoạn 2)
+```
+
+**Giai đoạn 1:** mọi Lead chỉ có một dòng ownership duy nhất với role `Owner`. Không có Collaborator/Viewer trong code thực tế, nhưng enum phải tồn tại sẵn để không đổi schema khi mở Giai đoạn 2.
+
+Áp dụng tương tự cho Property:
+
+```text
+property_ownerships (id, property_id, broker_id, role, granted_at, ...)
+```
+
+---
+
+## 4. Quyền hạn (Permission) theo Role
+
+Bảng quyền tối thiểu cần định nghĩa ngay, dù Giai đoạn 1 chỉ có Owner:
+
+| Hành động | Owner | Collaborator | Viewer |
+|---|---|---|---|
+| Xem Lead/Property | ✔ | ✔ | ✔ |
+| Sửa thông tin | ✔ | ✔ (giới hạn — chi tiết ở RFC Co-op) | ✘ |
+| Xóa/Đóng | ✔ | ✘ | ✘ |
+| Chuyển nhượng Owner | ✔ | ✘ | ✘ |
+| Mời Collaborator khác | ✔ | ✘ (mặc định — có thể mở ở Co-op RFC) | ✘ |
+| Xem AI Memory | ✔ | ✔ | ✔ |
+| Xác nhận Task/Follow-up | ✔ | ✔ | ✘ |
+
+**Nguyên tắc bất biến:** bảng quyền này phải được implement như **cấu hình dữ liệu** (bảng `role_permissions` hoặc tương đương), không hard-code if/else trong logic nghiệp vụ. Lý do: khi Giai đoạn 2 cần điều chỉnh quyền Collaborator chi tiết hơn (VD: Collaborator dẫn khách được sửa Timeline nhưng không được sửa thông tin liên hệ), chỉ cần đổi dữ liệu cấu hình, không sửa code.
+
+---
+
+## 5. Chuyển nhượng Ownership (Transfer)
+
+Tình huống bắt buộc phải xử lý ngay cả ở Giai đoạn 1, vì thực tế xảy ra thường xuyên:
+- Môi giới nghỉ việc/rời nhóm
+- Quản lý muốn điều chuyển Lead giữa các môi giới trong team
+
+**Nguyên tắc bất biến:**
+- Transfer **không phải** sửa trực tiếp dòng ownership cũ, mà là: đóng dòng ownership cũ (`revoked_at`) + tạo dòng ownership mới. Giữ lịch sử đầy đủ ai từng sở hữu Lead này, từ khi nào đến khi nào.
+- Mọi lần transfer phải ghi vào Timeline của Lead (liên kết với RFC-004).
+- Transfer không được xóa AI Memory hay Conversation lịch sử — dữ liệu ngữ cảnh phải đi theo Lead, không đi theo môi giới.
+
+---
+
+## 6. Chuẩn bị cho Co-op (Giai đoạn 2) — chưa build, chỉ dự trù
+
+Khi Co-op ra mắt, mô hình cần thêm (KHÔNG code ở Giai đoạn 1):
+
+```text
+- Nhiều Collaborator trên cùng 1 Lead, mỗi người một vai trò cụ thể hơn
+  (VD: "người dẫn khách xem nhà", "người xử lý giấy tờ")
+- Cơ chế thỏa thuận % hoa hồng gắn với từng Collaborator (liên kết RFC Commission sau này)
+- Owner có quyền duyệt/từ chối lời mời Collaborator tham gia
+```
+
+Vì mô hình bảng `lead_ownerships` ở Mục 2 đã là quan hệ nhiều dòng, việc thêm Collaborator ở Giai đoạn 2 **chỉ là thêm dòng mới vào bảng đã có sẵn** — không cần ALTER TABLE, không cần migrate dữ liệu cũ. Đây chính là lý do RFC này phải viết trước, dù Co-op chưa code.
+
+---
+
+## 7. Team & Quản lý (Viewer role) — dự trù xa hơn
+
+Ghi nhận để không bị bất ngờ ở Giai đoạn 2 (Team, Dashboard quản lý theo kế hoạch gốc): một Quản lý team cần xem được Lead của toàn bộ môi giới dưới quyền mà không sở hữu Lead đó. Đây chính là lý do role `Viewer` được định nghĩa từ Mục 3 dù chưa dùng ngay. Backend Dev không cần code phần Team ở Giai đoạn 1, chỉ cần đảm bảo model Ownership không cản trở việc thêm Viewer sau này.
+
+---
+
+## 8. Việc Backend Dev PHẢI làm khi đọc RFC này
+
+1. Tạo bảng quan hệ `lead_ownerships` và `property_ownerships` riêng biệt — không gắn `broker_id` trực tiếp vào bảng `leads`/`properties`.
+2. Định nghĩa enum Role (`Owner`, `Collaborator`, `Viewer`) ngay từ đầu, dù Giai đoạn 1 chỉ dùng `Owner`.
+3. Thiết kế bảng quyền (`role_permissions`) như dữ liệu cấu hình, không hard-code trong service logic.
+4. Transfer Ownership phải theo mô hình "đóng dòng cũ + tạo dòng mới", không update trực tiếp.
+5. Mọi thay đổi ownership phải ghi Timeline (liên kết RFC-004).
+
+## 9. Việc AI PHẢI tuân thủ khi sinh code
+
+- Không được sinh logic kiểm tra quyền bằng cách so sánh trực tiếp `user_id == broker_id` — luôn phải truy vấn qua bảng ownership + bảng quyền.
+- Không được sinh cột `broker_id` đơn lẻ trong bất kỳ bảng entity nào thuộc phạm vi RFC-004 (Lead, Property).
+- Khi sinh chức năng transfer, không được viết dưới dạng UPDATE trực tiếp — phải theo mô hình revoke + grant.
+
+---
+
+# 📘 BOOK 02 — PART IV: AI
+
+# RFC-006
+# AI MEMORY — CƠ CHẾ TRÍCH XUẤT & SUY LUẬN
+
+## Metadata
+
+```text
+RFC ID          RFC-006
+Status           Approved
+Priority         Critical
+Dependencies     RFC-004 (Canonical Entities), RFC-005 (Ownership & Permission)
+Hạ tầng dữ liệu  Supabase (Postgres + pgvector + RLS)
+Đọc trước bởi    AI, Backend Developer
+```
+
+---
+
+## 1. Vì sao RFC này tồn tại
+
+RFC-004 đã định nghĩa AI Memory là **dữ liệu đã được AI trích xuất/suy luận từ Conversation**, khác với Conversation (dữ liệu thô). Nhưng RFC-004 chưa trả lời câu hỏi quan trọng nhất:
+
+> **AI trích xuất Memory bằng cơ chế gì, và làm sao đảm bảo Memory không phải là "hộp đen"?**
+
+RFC này định nghĩa pipeline cụ thể, để Tuần 5-6 Backend Dev có thể code trực tiếp mà không phải tự suy đoán kiến trúc.
+
+---
+
+## 2. Nguyên tắc nền tảng
+
+> **Mọi Memory phải truy vết được về nguồn gốc sinh ra nó.**
+
+Đây là nguyên tắc đã nêu ở RFC-004, giờ cụ thể hóa thành ràng buộc kỹ thuật:
+
+```text
+KHÔNG được:
+ai_memories (id, lead_id, content, created_at)
+→ "content" là một câu kết luận không rõ AI lấy từ đâu
+
+PHẢI là:
+ai_memories (id, lead_id, content, confidence,
+             source_conversation_id, extracted_at, status)
+→ Mỗi Memory bắt buộc trỏ về ít nhất 1 Conversation nguồn
+```
+
+Lý do bắt buộc: nếu môi giới không tin được AI ("sao AI biết khách thích hướng Đông Nam?"), AI Acceptance Rate (RFC-002) sẽ giảm. Truy vết được nguồn là điều kiện tối thiểu để xây niềm tin.
+
+---
+
+## 3. Pipeline trích xuất — 4 bước
+
+```text
+Bước 1: Conversation được ghi nhận (thô)
+   ↓
+Bước 2: AI đọc Conversation mới, so sánh với Memory đã có
+   ↓
+Bước 3: AI đề xuất Memory mới hoặc cập nhật Memory cũ
+   ↓
+Bước 4: Memory được lưu kèm mức độ tin cậy (confidence) + trạng thái
+```
+
+### Bước 2 — Vì sao phải "so sánh với Memory đã có"
+
+Đây là điểm dễ bị bỏ sót nhất. Nếu AI chỉ đọc Conversation mới mà không đối chiếu Memory cũ, hệ thống sẽ:
+- Tạo Memory trùng lặp liên tục (VD: "khách thích Đông Nam" lặp lại 5 lần dưới 5 cách diễn đạt khác nhau)
+- Không phát hiện được khi thông tin **mâu thuẫn** (VD: tuần trước khách nói ngân sách 2 tỷ, tuần này nói 1.5 tỷ)
+
+**Nguyên tắc bất biến:** khi phát hiện mâu thuẫn, AI **không được tự ý ghi đè** Memory cũ. Phải tạo Memory mới với trạng thái `conflicting`, giữ cả hai bản, và hiển thị cho môi giới tự xác nhận bản nào đúng. Đây là lằn ranh quan trọng: AI hỗ trợ suy luận, con người quyết định sự thật cuối cùng.
+
+### Bước 4 — Mức độ tin cậy (Confidence)
+
+Không phải mọi suy luận của AI đều chắc chắn như nhau. Cần phân loại tối thiểu:
+
+```text
+High     — khách nói trực tiếp, rõ ràng ("tôi có 2 tỷ")
+Medium   — AI suy luận từ ngữ cảnh gián tiếp ("khách hỏi nhiều về khu Đông Nam" → suy ra thích hướng Đông Nam)
+Low      — AI phỏng đoán từ hành vi, chưa có phát ngôn trực tiếp
+```
+
+**Nguyên tắc bất biến:** Memory mức `Low` không được dùng làm input trực tiếp cho AI Follow-up gợi ý hành động — chỉ hiển thị dạng gợi ý tham khảo cho môi giới, tránh AI "bịa" quá tự tin.
+
+---
+
+### 3.5 Quy tắc sử dụng được (Usability Rule) — dùng chung cho mọi module tiêu thụ Memory
+
+`confidence` (High/Medium/Low) và `status` (Proposed/Confirmed/Conflicting/Archived) là **hai trục độc lập**, nhưng bất kỳ module nào tiêu thụ AI Memory (AI Follow-up ở RFC-007, Property Match ở RFC-008, và các module tương lai) đều phải áp dụng đúng MỘT quy tắc kết hợp sau — không tự diễn giải riêng:
+
+```text
+Memory được coi là "Sử dụng được" (usable) khi và chỉ khi:
+
+  status = Confirmed
+  HOẶC
+  (status = Proposed VÀ confidence ∈ {Medium, High})
+
+Memory KHÔNG được sử dụng khi:
+  status = Conflicting   (bất kể confidence nào — chờ môi giới xử lý trước)
+  status = Archived      (đã lỗi thời)
+  confidence = Low       (bất kể status nào — trừ khi đã được môi giới
+                          nâng lên Confirmed thủ công)
+```
+
+Diễn giải: một Memory do môi giới **xác nhận thủ công** (`Confirmed`) luôn dùng được, bất kể AI ban đầu tự tin ở mức nào — vì con người đã xác thực. Một Memory AI tự đề xuất (`Proposed`) chỉ dùng được nếu AI đủ tự tin (`Medium`/`High`). Memory đang mâu thuẫn hoặc đã lỗi thời không bao giờ được dùng làm căn cứ hành động, dù confidence gốc từng cao.
+
+**Nguyên tắc bất biến:** mọi RFC/module sau này khi cần lọc Memory để dùng phải trích dẫn nguyên văn quy tắc này, không viết lại theo cách diễn đạt khác.
+
+---
+
+## 4. Trạng thái vòng đời của một Memory
+
+```text
+Proposed    — AI vừa đề xuất, chưa ai xác nhận
+Confirmed   — môi giới đã xác nhận đúng
+Conflicting — có Memory khác mâu thuẫn, chờ môi giới xử lý
+Archived    — không còn đúng nữa (VD: khách đổi nhu cầu), nhưng vẫn giữ lại lịch sử, không xóa
+```
+
+**Nguyên tắc bất biến:** không có trạng thái "Deleted" xóa cứng. Đây là nguyên tắc xuyên suốt hệ thống (đã nêu ở RFC-004 cho Lead) — lịch sử suy luận của AI là dữ liệu quý để cải thiện AI Matching (RFC tương lai), xóa đi là mất tài sản.
+
+---
+
+## 5. Liên kết với hạ tầng Supabase
+
+Vì đã chọn Supabase, RFC này tận dụng trực tiếp:
+
+- **pgvector**: mỗi Memory nên lưu kèm embedding vector của nội dung, để sau này AI Smart Match (Giai đoạn 2) có thể tìm Property phù hợp bằng semantic search thay vì chỉ match theo trường dữ liệu cứng (giá, khu vực).
+- **RLS (Row Level Security)**: quyền xem/sửa Memory phải đi qua đúng bảng `lead_ownerships` đã định nghĩa ở RFC-005 — không viết logic kiểm tra quyền riêng cho AI Memory, dùng chung policy với Lead.
+- **Edge Functions**: pipeline trích xuất (Bước 2-4) nên chạy như Edge Function được trigger khi có Conversation mới, không chạy đồng bộ trong request chính của app — tránh làm chậm trải nghiệm nhập liệu của môi giới.
+
+---
+
+## 6. Việc Backend Dev PHẢI làm khi đọc RFC này
+
+1. Bảng `ai_memories` bắt buộc có: `lead_id`, `source_conversation_id`, `confidence`, `status`, `embedding` (pgvector).
+2. Không cho phép UPDATE trực tiếp nội dung Memory đã `Confirmed` — mọi thay đổi tạo bản ghi mới, bản cũ chuyển `Archived`.
+3. Thiết lập RLS cho `ai_memories` dựa trên `lead_ownerships` (RFC-005), không viết middleware riêng.
+4. Trích xuất chạy bất đồng bộ (Edge Function/background job), không chặn luồng nhập Conversation.
+
+## 7. Việc AI PHẢI tuân thủ khi sinh code hoặc khi vận hành (runtime)
+
+- Không tự ý ghi đè Memory khi phát hiện mâu thuẫn — luôn tạo trạng thái `conflicting` và chờ xác nhận từ môi giới.
+- Không dùng Memory mức `Low` làm input cho gợi ý hành động của AI Follow-up.
+- Mọi Memory sinh ra phải kèm `source_conversation_id` — không có ngoại lệ.
+
+---
+
