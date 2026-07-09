@@ -1,0 +1,144 @@
+# 📘 BOOK 02 — PART IV: AI
+
+# RFC-006
+# AI MEMORY — CƠ CHẾ TRÍCH XUẤT & SUY LUẬN
+
+## Metadata
+
+```text
+RFC ID          RFC-006
+Status           Approved
+Priority         Critical
+Dependencies     RFC-004 (Canonical Entities), RFC-005 (Ownership & Permission)
+Hạ tầng dữ liệu  Supabase (Postgres + pgvector + RLS)
+Đọc trước bởi    AI, Backend Developer
+```
+
+---
+
+## 1. Vì sao RFC này tồn tại
+
+RFC-004 đã định nghĩa AI Memory là **dữ liệu đã được AI trích xuất/suy luận từ Conversation**, khác với Conversation (dữ liệu thô). Nhưng RFC-004 chưa trả lời câu hỏi quan trọng nhất:
+
+> **AI trích xuất Memory bằng cơ chế gì, và làm sao đảm bảo Memory không phải là "hộp đen"?**
+
+RFC này định nghĩa pipeline cụ thể, để Tuần 5-6 Backend Dev có thể code trực tiếp mà không phải tự suy đoán kiến trúc.
+
+---
+
+## 2. Nguyên tắc nền tảng
+
+> **Mọi Memory phải truy vết được về nguồn gốc sinh ra nó.**
+
+Đây là nguyên tắc đã nêu ở RFC-004, giờ cụ thể hóa thành ràng buộc kỹ thuật:
+
+```text
+KHÔNG được:
+ai_memories (id, lead_id, content, created_at)
+→ "content" là một câu kết luận không rõ AI lấy từ đâu
+
+PHẢI là:
+ai_memories (id, lead_id, content, confidence,
+             source_conversation_id, extracted_at, status)
+→ Mỗi Memory bắt buộc trỏ về ít nhất 1 Conversation nguồn
+```
+
+Lý do bắt buộc: nếu môi giới không tin được AI ("sao AI biết khách thích hướng Đông Nam?"), AI Acceptance Rate (RFC-002) sẽ giảm. Truy vết được nguồn là điều kiện tối thiểu để xây niềm tin.
+
+---
+
+## 3. Pipeline trích xuất — 4 bước
+
+```text
+Bước 1: Conversation được ghi nhận (thô)
+   ↓
+Bước 2: AI đọc Conversation mới, so sánh với Memory đã có
+   ↓
+Bước 3: AI đề xuất Memory mới hoặc cập nhật Memory cũ
+   ↓
+Bước 4: Memory được lưu kèm mức độ tin cậy (confidence) + trạng thái
+```
+
+### Bước 2 — Vì sao phải "so sánh với Memory đã có"
+
+Đây là điểm dễ bị bỏ sót nhất. Nếu AI chỉ đọc Conversation mới mà không đối chiếu Memory cũ, hệ thống sẽ:
+- Tạo Memory trùng lặp liên tục (VD: "khách thích Đông Nam" lặp lại 5 lần dưới 5 cách diễn đạt khác nhau)
+- Không phát hiện được khi thông tin **mâu thuẫn** (VD: tuần trước khách nói ngân sách 2 tỷ, tuần này nói 1.5 tỷ)
+
+**Nguyên tắc bất biến:** khi phát hiện mâu thuẫn, AI **không được tự ý ghi đè** Memory cũ. Phải tạo Memory mới với trạng thái `conflicting`, giữ cả hai bản, và hiển thị cho môi giới tự xác nhận bản nào đúng. Đây là lằn ranh quan trọng: AI hỗ trợ suy luận, con người quyết định sự thật cuối cùng.
+
+### Bước 4 — Mức độ tin cậy (Confidence)
+
+Không phải mọi suy luận của AI đều chắc chắn như nhau. Cần phân loại tối thiểu:
+
+```text
+High     — khách nói trực tiếp, rõ ràng ("tôi có 2 tỷ")
+Medium   — AI suy luận từ ngữ cảnh gián tiếp ("khách hỏi nhiều về khu Đông Nam" → suy ra thích hướng Đông Nam)
+Low      — AI phỏng đoán từ hành vi, chưa có phát ngôn trực tiếp
+```
+
+**Nguyên tắc bất biến:** Memory mức `Low` không được dùng làm input trực tiếp cho AI Follow-up gợi ý hành động — chỉ hiển thị dạng gợi ý tham khảo cho môi giới, tránh AI "bịa" quá tự tin.
+
+---
+
+### 3.5 Quy tắc sử dụng được (Usability Rule) — dùng chung cho mọi module tiêu thụ Memory
+
+`confidence` (High/Medium/Low) và `status` (Proposed/Confirmed/Conflicting/Archived) là **hai trục độc lập**, nhưng bất kỳ module nào tiêu thụ AI Memory (AI Follow-up ở RFC-007, Property Match ở RFC-008, và các module tương lai) đều phải áp dụng đúng MỘT quy tắc kết hợp sau — không tự diễn giải riêng:
+
+```text
+Memory được coi là "Sử dụng được" (usable) khi và chỉ khi:
+
+  status = Confirmed
+  HOẶC
+  (status = Proposed VÀ confidence ∈ {Medium, High})
+
+Memory KHÔNG được sử dụng khi:
+  status = Conflicting   (bất kể confidence nào — chờ môi giới xử lý trước)
+  status = Archived      (đã lỗi thời)
+  confidence = Low       (bất kể status nào — trừ khi đã được môi giới
+                          nâng lên Confirmed thủ công)
+```
+
+Diễn giải: một Memory do môi giới **xác nhận thủ công** (`Confirmed`) luôn dùng được, bất kể AI ban đầu tự tin ở mức nào — vì con người đã xác thực. Một Memory AI tự đề xuất (`Proposed`) chỉ dùng được nếu AI đủ tự tin (`Medium`/`High`). Memory đang mâu thuẫn hoặc đã lỗi thời không bao giờ được dùng làm căn cứ hành động, dù confidence gốc từng cao.
+
+**Nguyên tắc bất biến:** mọi RFC/module sau này khi cần lọc Memory để dùng phải trích dẫn nguyên văn quy tắc này, không viết lại theo cách diễn đạt khác.
+
+---
+
+## 4. Trạng thái vòng đời của một Memory
+
+```text
+Proposed    — AI vừa đề xuất, chưa ai xác nhận
+Confirmed   — môi giới đã xác nhận đúng
+Conflicting — có Memory khác mâu thuẫn, chờ môi giới xử lý
+Archived    — không còn đúng nữa (VD: khách đổi nhu cầu), nhưng vẫn giữ lại lịch sử, không xóa
+```
+
+**Nguyên tắc bất biến:** không có trạng thái "Deleted" xóa cứng. Đây là nguyên tắc xuyên suốt hệ thống (đã nêu ở RFC-004 cho Lead) — lịch sử suy luận của AI là dữ liệu quý để cải thiện AI Matching (RFC tương lai), xóa đi là mất tài sản.
+
+---
+
+## 5. Liên kết với hạ tầng Supabase
+
+Vì đã chọn Supabase, RFC này tận dụng trực tiếp:
+
+- **pgvector**: mỗi Memory nên lưu kèm embedding vector của nội dung, để sau này AI Smart Match (Giai đoạn 2) có thể tìm Property phù hợp bằng semantic search thay vì chỉ match theo trường dữ liệu cứng (giá, khu vực).
+- **RLS (Row Level Security)**: quyền xem/sửa Memory phải đi qua đúng bảng `lead_ownerships` đã định nghĩa ở RFC-005 — không viết logic kiểm tra quyền riêng cho AI Memory, dùng chung policy với Lead.
+- **Edge Functions**: pipeline trích xuất (Bước 2-4) nên chạy như Edge Function được trigger khi có Conversation mới, không chạy đồng bộ trong request chính của app — tránh làm chậm trải nghiệm nhập liệu của môi giới.
+
+---
+
+## 6. Việc Backend Dev PHẢI làm khi đọc RFC này
+
+1. Bảng `ai_memories` bắt buộc có: `lead_id`, `source_conversation_id`, `confidence`, `status`, `embedding` (pgvector).
+2. Không cho phép UPDATE trực tiếp nội dung Memory đã `Confirmed` — mọi thay đổi tạo bản ghi mới, bản cũ chuyển `Archived`.
+3. Thiết lập RLS cho `ai_memories` dựa trên `lead_ownerships` (RFC-005), không viết middleware riêng.
+4. Trích xuất chạy bất đồng bộ (Edge Function/background job), không chặn luồng nhập Conversation.
+
+## 7. Việc AI PHẢI tuân thủ khi sinh code hoặc khi vận hành (runtime)
+
+- Không tự ý ghi đè Memory khi phát hiện mâu thuẫn — luôn tạo trạng thái `conflicting` và chờ xác nhận từ môi giới.
+- Không dùng Memory mức `Low` làm input cho gợi ý hành động của AI Follow-up.
+- Mọi Memory sinh ra phải kèm `source_conversation_id` — không có ngoại lệ.
+
+---
