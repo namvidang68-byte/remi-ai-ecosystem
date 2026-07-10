@@ -219,3 +219,13 @@ Mỗi Property → thuộc về đúng 1 môi giới quản lý nguồn
 - Khi sinh logic AI Memory, phải luôn giữ liên kết truy vết về Conversation/Timeline nguồn — không sinh "kết luận" không có nguồn.
 
 ---
+
+## CTO Review
+
+Founder, đây là RFC nền tảng — mọi RFC sau (AI Matching, Workflow Engine, Ownership Rules đầy đủ) sẽ tham chiếu ngược về đây. Nguyên tắc xuyên suốt: **thiết kế cho Giai đoạn 4, code cho Giai đoạn 1**. Nghĩa là schema phải đủ mở để không phá vỡ khi mở rộng, nhưng phạm vi code thực tế vẫn giữ đúng kỷ luật đã khóa ở Kế hoạch 90 ngày — không tự ý build thêm vì "tiện thể mở rộng luôn".
+
+RFC tiếp theo nên là gì, mình đề xuất hai lựa chọn:
+- **RFC-005: Ownership & Permission Rules đầy đủ** — cần trước khi có Co-op ở Giai đoạn 2, nhưng có thể phác thảo sớm để Backend Dev không thiết kế bí.
+- **RFC-006: AI Memory — Cơ chế trích xuất & suy luận** — mô tả chi tiết cách AI sinh ra Memory từ Conversation, cần trước khi code Tuần 5-6.
+
+Bạn muốn RFC tiếp theo là cái nào?

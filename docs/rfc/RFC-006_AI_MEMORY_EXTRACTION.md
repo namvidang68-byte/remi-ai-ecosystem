@@ -142,3 +142,15 @@ Vì đã chọn Supabase, RFC này tận dụng trực tiếp:
 - Mọi Memory sinh ra phải kèm `source_conversation_id` — không có ngoại lệ.
 
 ---
+
+## CTO Review
+
+Founder, đây là RFC quan trọng nhất trong giai đoạn AI Memory vì nó bảo vệ thứ dễ vỡ nhất của REMI: **niềm tin của môi giới vào AI**. Một AI CRM thông thường thất bại không phải vì thiếu tính năng, mà vì môi giới không tin dữ liệu AI đưa ra và quay lại dùng Excel/trí nhớ cá nhân. Ba nguyên tắc — truy vết nguồn gốc, phân loại confidence, không ghi đè khi mâu thuẫn — chính là hàng rào chống lại thất bại đó.
+
+Việc chọn Supabase giúp RFC này rẻ hơn nhiều để implement đúng: RLS giải quyết phần lớn bài toán quyền hạn ở RFC-005, pgvector giải quyết nền tảng cho Smart Match ở Giai đoạn 2 mà không cần đổi hạ tầng.
+
+RFC tiếp theo, đề xuất hai hướng:
+- **RFC-007: AI Follow-up — Cơ chế sinh gợi ý hành động**, vì đây là module code ngay sau ở Tuần 9-10, và cần định nghĩa rõ AI Follow-up dùng Memory (confidence nào, trạng thái nào) để tạo Task như thế nào.
+- **RFC-008: Property Match — Nguyên tắc ghép nối**, vì Tuần 7-8 sẽ code trước AI Follow-up.
+
+Theo đúng thứ tự code (Tuần 7-8 trước Tuần 9-10), bạn có muốn chuyển sang RFC-008 (Property Match) trước, rồi mới đến RFC-007 (AI Follow-up)?

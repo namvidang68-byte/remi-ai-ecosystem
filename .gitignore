@@ -1,0 +1,36 @@
+# ============================================================
+# Secrets — KHÔNG BAO GIỜ commit
+# ============================================================
+.env
+.env.*
+!.env.example
+supabase/.env
+
+# ============================================================
+# Flutter / Dart (app/)
+# ============================================================
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/build/
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/android/.gradle/
+app/android/local.properties
+app/*.iml
+
+# ============================================================
+# Supabase local dev
+# ============================================================
+supabase/.branches/
+supabase/.temp/
+
+# ============================================================
+# macOS / IDE
+# ============================================================
+.DS_Store
+.vscode/
+.idea/

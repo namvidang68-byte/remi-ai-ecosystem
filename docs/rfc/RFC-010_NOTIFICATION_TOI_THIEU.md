@@ -96,3 +96,29 @@ Actioned  — môi giới đã thực hiện hành động liên quan
 - Phải áp dụng logic gộp thông báo (Mục 4) trước khi tạo bản ghi mới, không gửi riêng lẻ từng sự kiện nhỏ.
 
 ---
+
+## CTO Review
+
+Founder, RFC này là ví dụ tốt về việc "làm đủ để hệ thống sống được, không làm thừa". Notification tối thiểu tồn tại chỉ để phục vụ đúng một mục đích: đảm bảo Task từ AI Follow-up không bị rơi vào im lặng, vì đó là nguồn duy nhất của North Star Metric. Mọi thứ vượt ra ngoài mục đích đó (đa kênh, tùy chỉnh, nhiều loại sự kiện) đều bị hoãn có chủ đích sang Giai đoạn 2.
+
+---
+
+## Tổng kết: Bộ RFC nền tảng cho Kế hoạch 90 ngày đã hoàn chỉnh
+
+```text
+RFC-004   Canonical Entities         — nền tảng chung
+RFC-005   Ownership & Permission     — quyền hạn, chuẩn bị Co-op
+RFC-006   AI Memory                  — cơ chế trích xuất & suy luận
+RFC-008   Property Match             — nguyên tắc ghép nối
+RFC-007   AI Follow-up               — cơ chế sinh gợi ý hành động
+RFC-009   Navigation & Theme         — kiến trúc UI nền tảng
+RFC-010   Notification tối thiểu     — đóng vòng lặp thông báo
+```
+
+Đến đây, Backend Developer, Flutter Developer, và AI đều có đủ tài liệu để bắt đầu Tuần 1 mà không cần tự đoán kiến trúc. Founder có thể cân nhắc bước tiếp theo:
+
+1. **Review tổng thể** — đọc lại toàn bộ 7 RFC một lượt trước khi bấm nút "bắt đầu code", đảm bảo không có mâu thuẫn giữa các RFC.
+2. **Viết RFC riêng cho Supabase Schema cụ thể** — chuyển 7 RFC khái niệm này thành một file schema SQL nháp (bảng, cột, RLS policy) làm tài liệu kỹ thuật cụ thể hơn cho Tuần 1-3.
+3. **Bắt đầu code ngay** — nếu bạn đã sẵn sàng, không cần thêm RFC nữa ở giai đoạn này.
+
+Bạn muốn đi hướng nào?

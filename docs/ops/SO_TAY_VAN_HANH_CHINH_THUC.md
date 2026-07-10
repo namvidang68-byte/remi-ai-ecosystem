@@ -294,3 +294,20 @@ remi-ai.io           → domain chính, dùng cho landing page Beta (nếu có) 
 beta.remi-ai.io       → (đề xuất) subdomain riêng cho trang hướng dẫn/tài liệu
                         Beta (Phần E) nếu cần, tách khỏi domain chính
 ```
+
+**Việc cần làm trong tuần đầu:** đăng ký Apple Developer Program + Google Play Console (nếu muốn phân phối qua TestFlight/Internal Testing thay vì gửi file APK/IPA trực tiếp) — quy trình duyệt Apple TestFlight có thể mất vài ngày, nên đăng ký sớm, không đợi đến Tuần 12.
+
+---
+
+## CTO Review
+
+Founder, đến đây toàn bộ thông số dự án đã có giá trị thật (`remi-ai-ecosystem`, `com.remiai.app`, `remi-ai.io`, `voyage-4-lite`) — không còn placeholder nào trong tài liệu. Bộ 7 RFC + schema SQL + sổ tay vận hành này là đủ để Backend Developer, Flutter Developer, và AI (qua Cursor/Claude Code) bắt đầu Tuần 1 mà không cần dừng lại hỏi thêm bất kỳ quyết định kiến trúc nào.
+
+Một điều tôi muốn nhấn mạnh lại trước khi bạn bấm nút bắt đầu: bộ tài liệu này sẽ **không cứng nhắc mãi mãi** — khi code Tuần 1-3 thực tế, chắc chắn sẽ có tình huống RFC chưa lường trước. Nguyên tắc xử lý khi đó: **không tự ý lệch khỏi RFC ở tầng code**, mà quay lại sửa RFC trước (giống cách chúng ta đã làm ở vòng review vừa rồi), rồi mới code theo RFC đã cập nhật. Đây là kỷ luật giữ cho toàn bộ hệ thống tài liệu này không trở thành "viết cho có" rồi bị bỏ qua khi áp lực deadline đến.
+
+**Việc tiếp theo, ba lựa chọn:**
+1. Bắt đầu code Tuần 1 ngay (migration + khung Flutter theo lệnh ở Phần G).
+2. Viết thêm 1 tài liệu "RFC Amendment Process" — quy định ngắn gọn cách sửa RFC giữa chừng khi code phát sinh vấn đề, để không phải tự bịa quy trình lúc đó.
+3. Rà lại một lượt cuối cùng toàn bộ 8 tài liệu (7 RFC + sổ tay) trước khi coi là "khóa sổ" chính thức.
+
+Bạn muốn đi hướng nào?

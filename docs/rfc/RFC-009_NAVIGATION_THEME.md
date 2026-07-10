@@ -126,3 +126,11 @@ Container(color: AppColors.primary, padding: AppSpacing.md)
 - Không tách entity con của Lead (Timeline, Property Match, Task, Document) thành màn hình độc lập rời khỏi màn hình chi tiết Lead.
 
 ---
+
+## CTO Review
+
+Founder, RFC này là ví dụ rõ nhất cho nguyên tắc "Screen xuất hiện cuối cùng" mà mình đặt ra từ đầu Book 02. Navigation ở đây không phải danh sách tính năng được vẽ ra rồi đặt tên — nó là hệ quả trực tiếp của mô hình Lead-centric (RFC-004) và vòng lặp giá trị hàng ngày (Kế hoạch 90 ngày). Nếu một UI Designer đọc RFC này trước khi mở Figma, họ sẽ không hỏi "làm màn hình gì", mà hỏi "Domain này cần Capability gì, rồi mới quyết định Screen".
+
+Giới hạn 4 mục Bottom Nav là cam kết kỷ luật — founder cần kiên định giữ nguyên tắc này ngay cả khi áp lực thêm tính năng đến từ phản hồi Beta, để tránh REMI trở thành "tập hợp hàng trăm tính năng" như RFC-002 đã cảnh báo.
+
+Tiếp theo mình viết RFC-010 cho Notification tối thiểu.
